@@ -5,6 +5,7 @@ import { getLongVersion } from '@nomiclabs/hardhat-etherscan/dist/src/solc/versi
 import { encodeArguments } from '@nomiclabs/hardhat-etherscan/dist/src/ABIEncoder';
 import { getLibraryLinks, Libraries } from '@nomiclabs/hardhat-etherscan/dist/src/solc/libraries';
 import { chainConfig } from '@nomiclabs/hardhat-etherscan/dist/src/ChainConfig';
+import { ChainConfig } from '@nomiclabs/hardhat-etherscan/dist/src/types';
 
 import {
   Bytecode,
@@ -36,6 +37,23 @@ import { findContractSourceName, getAllFullyQualifiedNames } from './buildinfo';
 
 const MAX_VERIFICATION_INTENTS = 3;
 
+const extraChains: ChainConfig = {
+  metis: {
+    chainId: 1088,
+    urls: {
+      apiURL: 'https://andromeda.metis.io/?owner=1088',
+      browserURL: 'https://andromeda-explorer.metis.io',
+    },
+  },
+  metisGoerli: {
+    chainId: 599,
+    urls: {
+      apiURL: 'https://goerli.gateway.metisdevops.link',
+      browserURL: 'https://goerli.explorer.metisdevops.link',
+    },
+  },
+};
+
 export default class Verifier {
   apiKey: string;
   network: Network;
@@ -56,7 +74,12 @@ export default class Verifier {
     const response = await this.verify(task, name, address, constructorArguments, libraries);
 
     if (response.isVerificationSuccess()) {
-      const etherscanEndpoints = await getEtherscanEndpoints(this.network.provider, this.network.name, chainConfig, []);
+      const etherscanEndpoints = await getEtherscanEndpoints(
+        this.network.provider,
+        this.network.name,
+        { ...chainConfig, ...extraChains },
+        []
+      );
 
       const contractURL = new URL(`/address/${address}#code`, etherscanEndpoints.urls.browserURL);
       return contractURL.toString();
@@ -102,7 +125,12 @@ export default class Verifier {
 
     const solcFullVersion = await getLongVersion(contractInformation.solcVersion);
 
-    const etherscanEndpoints = await getEtherscanEndpoints(this.network.provider, this.network.name, chainConfig, []);
+    const etherscanEndpoints = await getEtherscanEndpoints(
+      this.network.provider,
+      this.network.name,
+      { ...chainConfig, ...extraChains },
+      []
+    );
 
     const verificationStatus = await this.attemptVerification(
       etherscanEndpoints,

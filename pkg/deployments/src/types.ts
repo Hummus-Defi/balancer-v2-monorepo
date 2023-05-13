@@ -15,6 +15,8 @@ export const NETWORKS = [
   'bsc',
   'avalanche',
   'sepolia',
+  'metis',
+  'metisGoerli',
 ];
 
 export type Network = (typeof NETWORKS)[number];
