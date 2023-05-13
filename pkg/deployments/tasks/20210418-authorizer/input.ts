@@ -33,4 +33,10 @@ export default {
   sepolia: {
     admin: '0x171C0fF5943CE5f133130436A29bF61E26516003',
   },
+  metis: {
+    admin: '0xfeedC50149AEeD26AA262927D02F720F96580647',
+  },
+  metisGoerli: {
+    admin: '0xfeedC50149AEeD26AA262927D02F720F96580647',
+  },
 };

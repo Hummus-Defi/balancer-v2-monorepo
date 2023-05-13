@@ -41,14 +41,14 @@ const extraChains: ChainConfig = {
   metis: {
     chainId: 1088,
     urls: {
-      apiURL: 'https://andromeda.metis.io/?owner=1088',
+      apiURL: 'https://andromeda-explorer.metis.io/api',
       browserURL: 'https://andromeda-explorer.metis.io',
     },
   },
   metisGoerli: {
     chainId: 599,
     urls: {
-      apiURL: 'https://goerli.gateway.metisdevops.link',
+      apiURL: 'https://goerli.explorer.metisdevops.link/api',
       browserURL: 'https://goerli.explorer.metisdevops.link',
     },
   },
