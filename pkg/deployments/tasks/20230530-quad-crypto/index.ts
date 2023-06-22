@@ -9,8 +9,15 @@ import * as expectEvent from '@balancer-labs/v2-helpers/src/test/expectEvent';
 export default async (task: Task, { force, from }: TaskRunOptions = {}): Promise<void> => {
   const input = task.input() as QuadCryptoDeployment;
 
-  
   const factory = await task.instanceAt('WeightedPoolFactory', input.WeightedPoolFactory);
+
+  // order rate providers by the alphabetic ordering of token addresses
+  let rateProviders: string[] = [];
+  if (task.network === 'metisGoerli') {
+    rateProviders = [input.USDC_PROVIDER, input.BTC_PROVIDER, input.ETH_PROVIDER, input.METIS_PROVIDER];
+  } else {
+    rateProviders = [input.ETH_PROVIDER, input.BTC_PROVIDER, input.METIS_PROVIDER, input.USDC_PROVIDER];
+  }
 
   // We also create a Pool using the factory and verify it, to let us compute their action IDs and so that future
   // Pools are automatically verified. We however don't run any of this code in CHECK mode, since we don't care about
@@ -22,7 +29,7 @@ export default async (task: Task, { force, from }: TaskRunOptions = {}): Promise
       return a.toLowerCase().localeCompare(b.toLowerCase());
     }),
     normalizedWeights: [fp(0.25), fp(0.25), fp(0.25), fp(0.25)],
-    rateProviders: [ZERO_ADDRESS, ZERO_ADDRESS, ZERO_ADDRESS, ZERO_ADDRESS],
+    rateProviders,
     assetManagers: [ZERO_ADDRESS, ZERO_ADDRESS, ZERO_ADDRESS, ZERO_ADDRESS],
     swapFeePercentage: bn(1e15),
   };
@@ -35,7 +42,7 @@ export default async (task: Task, { force, from }: TaskRunOptions = {}): Promise
     protocolFeeProvider: input.ProtocolFeePercentagesProvider,
     pauseWindowDuration: undefined,
     bufferPeriodDuration: undefined,
-    owner: ZERO_ADDRESS,
+    owner: input.admin, // ZERO_ADDRESS,
     version: input.PoolVersion,
   };
 
