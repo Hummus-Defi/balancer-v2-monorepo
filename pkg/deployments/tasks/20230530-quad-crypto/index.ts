@@ -15,8 +15,10 @@ export default async (task: Task, { force, from }: TaskRunOptions = {}): Promise
   let rateProviders: string[] = [];
   if (task.network === 'metisGoerli') {
     rateProviders = [input.USDC_PROVIDER, input.BTC_PROVIDER, input.ETH_PROVIDER, input.METIS_PROVIDER];
-  } else {
+  } else if (task.network === 'metis') {
     rateProviders = [input.ETH_PROVIDER, input.BTC_PROVIDER, input.METIS_PROVIDER, input.USDC_PROVIDER];
+  } else {
+    rateProviders = [ZERO_ADDRESS, ZERO_ADDRESS, ZERO_ADDRESS, ZERO_ADDRESS]
   }
 
   // We also create a Pool using the factory and verify it, to let us compute their action IDs and so that future
