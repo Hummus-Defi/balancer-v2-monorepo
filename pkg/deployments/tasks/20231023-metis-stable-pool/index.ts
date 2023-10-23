@@ -20,7 +20,7 @@ export default async (task: Task, { force, from }: TaskRunOptions = {}): Promise
     tokens: [input.DAI, input.USDT, input.USDC].sort(function (a, b) {
       return a.toLowerCase().localeCompare(b.toLowerCase());
     }),
-    normalizedWeights: [fp(0.333333333333333333), fp(0.333333333333333333), fp(0.333333333333333334)],
+    normalizedWeights: [fp(0.3333333333333333), fp(0.3333333333333333), fp(0.3333333333333334)],
     rateProviders: [ZERO_ADDRESS, ZERO_ADDRESS, ZERO_ADDRESS],
     assetManagers: [ZERO_ADDRESS, ZERO_ADDRESS, ZERO_ADDRESS],
     swapFeePercentage: bn(1e15),
