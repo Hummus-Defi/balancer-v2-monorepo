@@ -20,10 +20,11 @@ import "@balancer-labs/v2-interfaces/contracts/pool-utils/IVersion.sol";
 import "@balancer-labs/v2-interfaces/contracts/vault/IVault.sol";
 
 import "@balancer-labs/v2-pool-utils/contracts/factories/BasePoolFactory.sol";
+import "@balancer-labs/v2-pool-utils/contracts/factories/FactoryWidePauseWindow.sol";
 
 import "./ComposableStablePool.sol";
 
-contract ComposableStablePoolFactory is IVersion, IPoolVersion, BasePoolFactory {
+contract ComposableStablePoolFactory is IVersion, IPoolVersion, BasePoolFactory, FactoryWidePauseWindow {
     string private _version;
     string private _poolVersion;
 
@@ -31,18 +32,8 @@ contract ComposableStablePoolFactory is IVersion, IPoolVersion, BasePoolFactory 
         IVault vault,
         IProtocolFeePercentagesProvider protocolFeeProvider,
         string memory factoryVersion,
-        string memory poolVersion,
-        uint256 initialPauseWindowDuration,
-        uint256 bufferPeriodDuration
-    )
-        BasePoolFactory(
-            vault,
-            protocolFeeProvider,
-            initialPauseWindowDuration,
-            bufferPeriodDuration,
-            type(ComposableStablePool).creationCode
-        )
-    {
+        string memory poolVersion
+    ) BasePoolFactory(vault, protocolFeeProvider, type(ComposableStablePool).creationCode) {
         _version = factoryVersion;
         _poolVersion = poolVersion;
     }
@@ -65,7 +56,7 @@ contract ComposableStablePoolFactory is IVersion, IPoolVersion, BasePoolFactory 
         uint256 amplificationParameter,
         IRateProvider[] memory rateProviders,
         uint256[] memory tokenRateCacheDurations,
-        bool[] memory exemptFromYieldProtocolFeeFlags,
+        bool exemptFromYieldProtocolFeeFlag,
         uint256 swapFeePercentage,
         address owner,
         bytes32 salt
@@ -83,7 +74,7 @@ contract ComposableStablePoolFactory is IVersion, IPoolVersion, BasePoolFactory 
                             tokens: tokens,
                             rateProviders: rateProviders,
                             tokenRateCacheDurations: tokenRateCacheDurations,
-                            exemptFromYieldProtocolFeeFlags: exemptFromYieldProtocolFeeFlags,
+                            exemptFromYieldProtocolFeeFlag: exemptFromYieldProtocolFeeFlag,
                             amplificationParameter: amplificationParameter,
                             swapFeePercentage: swapFeePercentage,
                             pauseWindowDuration: pauseWindowDuration,

@@ -135,7 +135,7 @@ library StableMath {
         // by = balance token out                                                                                    //
         // y = by - ay (finalBalanceOut)                                                                             //
         // D = invariant                                               D                     D^(n+1)                 //
-        // A = amplification coefficient               y^2 + ( S + ----------  - D) * y -  ------------- = 0         //
+        // A = amplification coefficient               y^2 + ( S - ----------  - D) * y -  ------------- = 0         //
         // n = number of tokens                                    (A * n^n)               A * n^2n * P              //
         // S = sum of final balances but y                                                                           //
         // P = product of final balances but y                                                                       //
@@ -175,7 +175,7 @@ library StableMath {
         // bx = balance token in                                                                                     //
         // x = bx + ax (finalBalanceIn)                                                                              //
         // D = invariant                                                D                     D^(n+1)                //
-        // A = amplification coefficient               x^2 + ( S + ----------  - D) * x -  ------------- = 0         //
+        // A = amplification coefficient               x^2 + ( S - ----------  - D) * x -  ------------- = 0         //
         // n = number of tokens                                     (A * n^n)               A * n^2n * P             //
         // S = sum of final balances but x                                                                           //
         // P = product of final balances but x                                                                       //
@@ -446,5 +446,30 @@ library StableMath {
         }
 
         _revert(Errors.STABLE_GET_BALANCE_DIDNT_CONVERGE);
+    }
+
+    function _computeProportionalAmountsIn(
+        uint256[] memory balances,
+        uint256 bptAmountOut,
+        uint256 totalBPT
+    ) internal pure returns (uint256[] memory) {
+        /************************************************************************************
+        // tokensInForExactBptOut                                                          //
+        // (per token)                                                                     //
+        // aI = amountIn                   /   bptOut   \                                  //
+        // b = balance           aI = b * | ------------ |                                 //
+        // bptOut = bptAmountOut           \  totalBPT  /                                  //
+        // bpt = totalBPT                                                                  //
+        ************************************************************************************/
+
+        // Tokens in, so we round up overall.
+        uint256 bptRatio = bptAmountOut.divUp(totalBPT);
+
+        uint256[] memory amountsIn = new uint256[](balances.length);
+        for (uint256 i = 0; i < balances.length; i++) {
+            amountsIn[i] = balances[i].mulUp(bptRatio);
+        }
+
+        return amountsIn;
     }
 }

@@ -24,13 +24,13 @@ contract MockComposableStablePoolStorage is ComposableStablePoolStorage {
         IVault vault,
         IERC20[] memory tokens,
         IRateProvider[] memory tokenRateProviders,
-        bool[] memory exemptFromYieldProtocolFeeFlags
+        bool exemptFromYieldProtocolFeeFlag
     )
         ComposableStablePoolStorage(
             StorageParams({
                 registeredTokens: _insertSorted(tokens, IERC20(this)),
                 tokenRateProviders: tokenRateProviders,
-                exemptFromYieldProtocolFeeFlags: exemptFromYieldProtocolFeeFlags
+                exemptFromYieldProtocolFeeFlag: exemptFromYieldProtocolFeeFlag
             })
         )
         BasePool(
@@ -121,19 +121,6 @@ contract MockComposableStablePoolStorage is ComposableStablePoolStorage {
         return _getRateProvider(index);
     }
 
-    // This assumes the tokenIndex is valid. If it's not, it will just return false.
-    function isTokenExemptFromYieldProtocolFeeByIndex(uint256 tokenIndex) external view returns (bool) {
-        return _isTokenExemptFromYieldProtocolFee(tokenIndex);
-    }
-
-    function areAllTokensExempt() external view returns (bool) {
-        return _areAllTokensExempt();
-    }
-
-    function areNoTokensExempt() external view returns (bool) {
-        return _areNoTokensExempt();
-    }
-
     // Stubbed functions
 
     function _scalingFactors() internal view virtual override returns (uint256[] memory) {}
@@ -145,7 +132,7 @@ contract MockComposableStablePoolStorage is ComposableStablePoolStorage {
         uint256[] memory,
         bytes memory
     ) internal pure override returns (uint256, uint256[] memory) {
-        _revert(Errors.UNIMPLEMENTED);
+        revert("NOT_IMPLEMENTED");
     }
 
     function _onJoinPool(
@@ -158,7 +145,7 @@ contract MockComposableStablePoolStorage is ComposableStablePoolStorage {
         uint256[] memory,
         bytes memory
     ) internal pure override returns (uint256, uint256[] memory) {
-        _revert(Errors.UNIMPLEMENTED);
+        revert("NOT_IMPLEMENTED");
     }
 
     function _onExitPool(
@@ -171,14 +158,6 @@ contract MockComposableStablePoolStorage is ComposableStablePoolStorage {
         uint256[] memory,
         bytes memory
     ) internal pure override returns (uint256, uint256[] memory) {
-        _revert(Errors.UNIMPLEMENTED);
-    }
-
-    function _doRecoveryModeExit(
-        uint256[] memory,
-        uint256,
-        bytes memory
-    ) internal pure override returns (uint256, uint256[] memory) {
-        _revert(Errors.UNIMPLEMENTED);
+        revert("NOT_IMPLEMENTED");
     }
 }

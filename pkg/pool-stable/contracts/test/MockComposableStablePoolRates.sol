@@ -13,6 +13,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 pragma solidity ^0.7.0;
+pragma experimental ABIEncoderV2;
 
 import "@balancer-labs/v2-solidity-utils/contracts/helpers/ERC20Helpers.sol";
 
@@ -24,12 +25,12 @@ contract MockComposableStablePoolRates is ComposableStablePoolRates {
         IERC20[] memory tokens,
         IRateProvider[] memory tokenRateProviders,
         uint256[] memory tokenRateCacheDurations,
-        bool[] memory exemptFromYieldProtocolFeeFlags,
+        bool exemptFromYieldProtocolFeeFlag,
         address owner
     )
         ComposableStablePoolRates(RatesParams(tokens, tokenRateProviders, tokenRateCacheDurations))
         ComposableStablePoolStorage(
-            StorageParams(_insertSorted(tokens, IERC20(this)), tokenRateProviders, exemptFromYieldProtocolFeeFlags)
+            StorageParams(_insertSorted(tokens, IERC20(this)), tokenRateProviders, exemptFromYieldProtocolFeeFlag)
         )
         BasePool(
             vault,
@@ -59,12 +60,12 @@ contract MockComposableStablePoolRates is ComposableStablePoolRates {
         _updateOldRates();
     }
 
-    function getAdjustedBalances(uint256[] memory balances, bool ignoreExemptFlags)
+    function getAdjustedBalances(uint256[] memory balances)
         external
         view
         returns (uint256[] memory)
     {
-        return _getAdjustedBalances(balances, ignoreExemptFlags);
+        return _getAdjustedBalances(balances);
     }
 
     function _onInitializePool(
@@ -74,7 +75,7 @@ contract MockComposableStablePoolRates is ComposableStablePoolRates {
         uint256[] memory,
         bytes memory
     ) internal pure override returns (uint256, uint256[] memory) {
-        _revert(Errors.UNIMPLEMENTED);
+        revert("NOT_IMPLEMENTED");
     }
 
     function _onJoinPool(
@@ -87,7 +88,7 @@ contract MockComposableStablePoolRates is ComposableStablePoolRates {
         uint256[] memory,
         bytes memory
     ) internal pure override returns (uint256, uint256[] memory) {
-        _revert(Errors.UNIMPLEMENTED);
+        revert("NOT_IMPLEMENTED");
     }
 
     function _onExitPool(
@@ -100,14 +101,6 @@ contract MockComposableStablePoolRates is ComposableStablePoolRates {
         uint256[] memory,
         bytes memory
     ) internal pure override returns (uint256, uint256[] memory) {
-        _revert(Errors.UNIMPLEMENTED);
-    }
-
-    function _doRecoveryModeExit(
-        uint256[] memory,
-        uint256,
-        bytes memory
-    ) internal pure override returns (uint256, uint256[] memory) {
-        _revert(Errors.UNIMPLEMENTED);
+        revert("NOT_IMPLEMENTED");
     }
 }

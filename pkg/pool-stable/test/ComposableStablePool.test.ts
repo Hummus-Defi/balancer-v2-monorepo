@@ -14,13 +14,10 @@ import {
   fp,
   pct,
   arrayAdd,
-  arrayFpMul,
   bnSum,
+  arrayFpMul,
   fpDiv,
   fpMul,
-  FP_ONE,
-  FP_ZERO,
-  FP_100_PCT,
 } from '@balancer-labs/v2-helpers/src/numbers';
 import { MAX_UINT112, ZERO_ADDRESS } from '@balancer-labs/v2-helpers/src/constants';
 import { RawStablePoolDeployment } from '@balancer-labs/v2-helpers/src/models/pools/stable/types';
@@ -84,29 +81,28 @@ describe('ComposableStablePool', () => {
 
     const rateProviders: Contract[] = [];
     const tokenRateCacheDurations: number[] = [];
-    const exemptFromYieldProtocolFeeFlags: boolean[] = [];
 
     const ZEROS = Array(numberOfTokens + 1).fill(bn(0));
 
     async function deployPool(
       params: RawStablePoolDeployment = {},
       rates: BigNumberish[] = [],
-      durations: number[] = []
+      durations: number[] = [],
+      exemptFromYieldProtocolFeeFlag = false
     ): Promise<void> {
       tokens = params.tokens || (await TokenList.create(numberOfTokens, { sorted: true }));
 
       for (let i = 0; i < numberOfTokens; i++) {
         rateProviders[i] = await deploy('v2-pool-utils/MockRateProvider');
-        await rateProviders[i].mockRate(rates[i] || FP_ONE);
+        await rateProviders[i].mockRate(rates[i] || fp(1));
         tokenRateCacheDurations[i] = MONTH + i;
-        exemptFromYieldProtocolFeeFlags[i] = i % 2 == 0; // set true for even tokens
       }
 
       pool = await StablePool.create({
         tokens,
         rateProviders,
         tokenRateCacheDurations: durations.length > 0 ? durations : tokenRateCacheDurations,
-        exemptFromYieldProtocolFeeFlags,
+        exemptFromYieldProtocolFeeFlag,
         owner,
         admin,
         ...params,
@@ -362,7 +358,7 @@ describe('ComposableStablePool', () => {
               const preVirtualSupply = await pool.getVirtualSupply();
               expectedBptAmount = preVirtualSupply
                 .mul(expectedProtocolOwnershipPercentage)
-                .div(FP_100_PCT.sub(expectedProtocolOwnershipPercentage));
+                .div(fp(1).sub(expectedProtocolOwnershipPercentage));
             });
 
             it('returns the total supply after protocol fees are paid', async () => {
@@ -487,7 +483,7 @@ describe('ComposableStablePool', () => {
 
         context('when the pool was not initialized', () => {
           it('reverts', async () => {
-            const tx = pool.swapGivenIn({ in: tokens.first, out: tokens.second, amount: FP_ZERO, recipient });
+            const tx = pool.swapGivenIn({ in: tokens.first, out: tokens.second, amount: fp(0), recipient });
             await expect(tx).to.be.reverted;
           });
         });
@@ -1485,7 +1481,7 @@ describe('ComposableStablePool', () => {
               const value = Math.random() / 5;
 
               await rateProviders[i].mockRate(
-                fpMul(previousCache.rate, Math.random() > 0.5 ? fp(1 + value) : fp(1 - value))
+                previousCache.rate.mul(Math.random() > 0.5 ? fp(1 + value) : fp(1 - value)).div(fp(1))
               );
             });
           }
@@ -1500,7 +1496,7 @@ describe('ComposableStablePool', () => {
               expect(actualFactors[tokenIndex]).to.be.equal(expectedScalingFactor);
             });
 
-            expect(newScalingFactors[pool.bptIndex]).to.be.equal(FP_ONE);
+            expect(newScalingFactors[pool.bptIndex]).to.be.equal(fp(1));
           }
 
           sharedBeforeEach('fund lp and pool', async () => {
@@ -2094,6 +2090,7 @@ describe('ComposableStablePool', () => {
 
       const expectedOwnerOnlyFunctions = [
         'setSwapFeePercentage',
+        'setAssetManagerPoolConfig',
         'startAmplificationParameterUpdate',
         'stopAmplificationParameterUpdate',
         'setTokenRateCacheDuration',

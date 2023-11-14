@@ -5,8 +5,8 @@ import { BigNumber, Contract, ContractTransaction } from 'ethers';
 import { deploy, deployedAt } from '@balancer-labs/v2-helpers/src/contract';
 import { sharedBeforeEach } from '@balancer-labs/v2-common/sharedBeforeEach';
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/dist/src/signer-with-address';
-import { bn, fp, fpDiv, FP_ONE, FP_ZERO } from '@balancer-labs/v2-helpers/src/numbers';
-import { DELEGATE_OWNER, ZERO_ADDRESS } from '@balancer-labs/v2-helpers/src/constants';
+import { bn, fp, fpDiv } from '@balancer-labs/v2-helpers/src/numbers';
+import { ZERO_ADDRESS } from '@balancer-labs/v2-helpers/src/constants';
 
 import TokenList from '@balancer-labs/v2-helpers/src/models/tokens/TokenList';
 import Vault from '@balancer-labs/v2-helpers/src/models/vault/Vault';
@@ -28,6 +28,7 @@ import Token from '@balancer-labs/v2-helpers/src/models/tokens/Token';
 describe('ComposableStablePoolRates', () => {
   let admin: SignerWithAddress, owner: SignerWithAddress, other: SignerWithAddress;
   let vault: Vault;
+  const DELEGATE_OWNER = '0xBA1BA1ba1BA1bA1bA1Ba1BA1ba1BA1bA1ba1ba1B';
 
   const INITIAL_CACHE_DURATION = bn(HOUR);
 
@@ -99,7 +100,7 @@ describe('ComposableStablePoolRates', () => {
     return Promise.all(
       rateProviderAddresses.map(async (rateProviderAddress) => {
         // Tokens without a rate provider have rate 1.
-        if (rateProviderAddress === ZERO_ADDRESS) return FP_ONE;
+        if (rateProviderAddress === ZERO_ADDRESS) return fp(1);
 
         const rateProvider = await deployedAt('v2-pool-utils/MockRateProvider', rateProviderAddress);
         return await rateProvider.getRate();
@@ -116,13 +117,12 @@ describe('ComposableStablePoolRates', () => {
     });
 
     let rateProviders: string[] = [];
-    let exemptFromYieldProtocolFeeFlags: boolean[] = [];
 
     async function deployPool(
       tokenList: TokenList,
       newRateProviders: string[],
       newTokenRateCacheDurations: BigNumber[],
-      newExemptFromYieldProtocolFeeFlags: boolean[],
+      newExemptFromYieldProtocolFeeFlag: boolean,
       poolOwner: Account
     ): Promise<void> {
       pool = await deploy('MockComposableStablePoolRates', {
@@ -131,13 +131,12 @@ describe('ComposableStablePoolRates', () => {
           tokenList.addresses,
           newRateProviders,
           newTokenRateCacheDurations,
-          newExemptFromYieldProtocolFeeFlags,
+          newExemptFromYieldProtocolFeeFlag,
           TypesConverter.toAddress(poolOwner),
         ],
       });
       bptIndex = (await pool.getBptIndex()).toNumber();
       rateProviders = newRateProviders;
-      exemptFromYieldProtocolFeeFlags = newExemptFromYieldProtocolFeeFlags;
     }
 
     async function deployPoolSimple(
@@ -165,7 +164,7 @@ describe('ComposableStablePoolRates', () => {
         tokenList,
         newRateProviders,
         newTokenRateCacheDurations,
-        newExemptFromYieldProtocolFeeFlags,
+        newExemptFromYieldProtocolFeeFlags.every((flag) => flag),
         poolOwner
       );
     }
@@ -194,7 +193,7 @@ describe('ComposableStablePoolRates', () => {
             if (rateProvider !== ZERO_ADDRESS) {
               expectEvent.inIndirectReceipt(deploymentTx, pool.interface, 'TokenRateCacheUpdated', {
                 tokenIndex: index,
-                rate: FP_ONE,
+                rate: fp(1),
               });
             }
           }
@@ -243,7 +242,7 @@ describe('ComposableStablePoolRates', () => {
                 // Ignore tokens with rate providers
                 if (allRateProviders[i] !== ZERO_ADDRESS) return;
 
-                expect(await pool.getTokenRate(token.address)).to.be.eq(FP_ONE);
+                expect(await pool.getTokenRate(token.address)).to.be.eq(fp(1));
               });
             });
           });
@@ -256,7 +255,7 @@ describe('ComposableStablePoolRates', () => {
                 // Ignore tokens without rate providers
                 if (allRateProviders[i] === ZERO_ADDRESS) return;
 
-                const initialRate = FP_ONE;
+                const initialRate = fp(1);
                 expect(await pool.getTokenRate(token.address)).to.be.eq(initialRate);
 
                 // We update the rate reported by the rate provider but do not trigger a cache update.
@@ -487,7 +486,7 @@ describe('ComposableStablePoolRates', () => {
 
             // Set rates to zero. If the pool is reading from the rate provider directly then this will cause reverts.
             // This ensures that the pool is using its cache properly.
-            await rateProvider.mockRate(FP_ZERO);
+            await rateProvider.mockRate(fp(0));
           });
         });
 
@@ -658,7 +657,7 @@ describe('ComposableStablePoolRates', () => {
           context('when the sender is allowed', () => {
             sharedBeforeEach('grant role to caller', async () => {
               const action = await actionId(pool, 'setTokenRateCacheDuration');
-              await vault.grantPermissionGlobally(action, other);
+              await vault.grantPermissionsGlobally([action], other);
             });
 
             context('before the cache expires', () => {
@@ -700,7 +699,7 @@ describe('ComposableStablePoolRates', () => {
         it('adapts the scaling factors with the price rate', async () => {
           const scalingFactors = await pool.getScalingFactors();
           expect(scalingFactors).to.be.deep.equal(expectedScalingFactors);
-          expect(scalingFactors[bptIndex]).to.be.equal(FP_ONE);
+          expect(scalingFactors[bptIndex]).to.be.equal(fp(1));
         });
       };
 
@@ -720,7 +719,7 @@ describe('ComposableStablePoolRates', () => {
             if (allRateProviders[i] === ZERO_ADDRESS) return;
 
             const rateProvider = await deployedAt('v2-pool-utils/MockRateProvider', allRateProviders[i]);
-            await rateProvider.mockRate(FP_ZERO);
+            await rateProvider.mockRate(fp(0));
           });
         });
 
@@ -733,7 +732,7 @@ describe('ComposableStablePoolRates', () => {
             if (allRateProviders[i] === ZERO_ADDRESS) return;
 
             const rateProvider = await deployedAt('v2-pool-utils/MockRateProvider', allRateProviders[i]);
-            await rateProvider.mockRate(FP_ONE);
+            await rateProvider.mockRate(fp(1));
             await pool.updateTokenRateCache(token.address);
           });
           expectedScalingFactors = await getExpectedScalingFactors(allTokens, await getRates(allRateProviders));
@@ -744,7 +743,7 @@ describe('ComposableStablePoolRates', () => {
             if (allRateProviders[i] === ZERO_ADDRESS) return;
 
             const rateProvider = await deployedAt('v2-pool-utils/MockRateProvider', allRateProviders[i]);
-            await rateProvider.mockRate(FP_ZERO);
+            await rateProvider.mockRate(fp(0));
           });
         });
 
@@ -768,7 +767,7 @@ describe('ComposableStablePoolRates', () => {
             if (allRateProviders[i] === ZERO_ADDRESS) return;
 
             const rateProvider = await deployedAt('v2-pool-utils/MockRateProvider', allRateProviders[i]);
-            await rateProvider.mockRate(FP_ZERO);
+            await rateProvider.mockRate(fp(0));
           });
         });
 
@@ -798,7 +797,7 @@ describe('ComposableStablePoolRates', () => {
           if (rateProviders[i] === ZERO_ADDRESS) return;
 
           const rateProvider = await deployedAt('v2-pool-utils/MockRateProvider', rateProviders[i]);
-          await rateProvider.mockRate(FP_ZERO);
+          await rateProvider.mockRate(fp(0));
         });
       });
 
@@ -808,20 +807,7 @@ describe('ComposableStablePoolRates', () => {
             const inputArray = tokens.map(() => fp(Math.random()));
             const expectedOutputArray = inputArray.map((input, i) => fpDiv(input, rates[i]));
 
-            expect(await pool.getAdjustedBalances(inputArray, true)).to.be.deep.eq(expectedOutputArray);
-          }
-        });
-      });
-
-      context('when not ignoring exempt flags', () => {
-        it('returns the array with elements scaled by the ratio of current and old cached token rates if exempt', async () => {
-          for (let i = 0; i < 5; i++) {
-            const inputArray = tokens.map(() => fp(Math.random()));
-            const expectedOutputArray = inputArray.map((input, i) =>
-              exemptFromYieldProtocolFeeFlags[i] ? fpDiv(input, rates[i]) : input
-            );
-
-            expect(await pool.getAdjustedBalances(inputArray, false)).to.be.deep.eq(expectedOutputArray);
+            expect(await pool.getAdjustedBalances(inputArray)).to.be.deep.eq(expectedOutputArray);
           }
         });
       });

@@ -27,7 +27,6 @@ import "@balancer-labs/v2-solidity-utils/contracts/helpers/ERC20Helpers.sol";
 import "@balancer-labs/v2-solidity-utils/contracts/helpers/InputHelpers.sol";
 
 import "@balancer-labs/v2-pool-utils/contracts/BaseGeneralPool.sol";
-import "@balancer-labs/v2-pool-utils/contracts/lib/BasePoolMath.sol";
 import "@balancer-labs/v2-pool-utils/contracts/rates/PriceRateCache.sol";
 
 import "./ComposableStablePoolStorage.sol";
@@ -78,7 +77,7 @@ contract ComposableStablePool is
         IERC20[] tokens;
         IRateProvider[] rateProviders;
         uint256[] tokenRateCacheDurations;
-        bool[] exemptFromYieldProtocolFeeFlags;
+        bool exemptFromYieldProtocolFeeFlag;
         uint256 amplificationParameter;
         uint256 swapFeePercentage;
         uint256 pauseWindowDuration;
@@ -103,10 +102,7 @@ contract ComposableStablePool is
         StablePoolAmplification(params.amplificationParameter)
         ComposableStablePoolStorage(_extractStorageParams(params))
         ComposableStablePoolRates(_extractRatesParams(params))
-        ProtocolFeeCache(
-            params.protocolFeeProvider,
-            ProviderFeeIDs({ swap: ProtocolFeeType.SWAP, yield: ProtocolFeeType.YIELD, aum: ProtocolFeeType.AUM })
-        )
+        ProtocolFeeCache(params.protocolFeeProvider, ProtocolFeeCache.DELEGATE_PROTOCOL_SWAP_FEES_SENTINEL)
     {
         _version = params.version;
     }
@@ -135,7 +131,7 @@ contract ComposableStablePool is
             ComposableStablePoolStorage.StorageParams({
                 registeredTokens: _insertSorted(params.tokens, IERC20(this)),
                 tokenRateProviders: params.rateProviders,
-                exemptFromYieldProtocolFeeFlags: params.exemptFromYieldProtocolFeeFlags
+                exemptFromYieldProtocolFeeFlag: params.exemptFromYieldProtocolFeeFlag
             });
     }
 
@@ -764,7 +760,7 @@ contract ComposableStablePool is
         bytes memory userData
     ) private pure returns (uint256, uint256[] memory) {
         uint256 bptAmountOut = userData.allTokensInForExactBptOut();
-        uint256[] memory amountsIn = BasePoolMath.computeProportionalAmountsIn(balances, actualSupply, bptAmountOut);
+        uint256[] memory amountsIn = StableMath._computeProportionalAmountsIn(balances, bptAmountOut, actualSupply);
 
         return (bptAmountOut, amountsIn);
     }
@@ -879,7 +875,7 @@ contract ComposableStablePool is
         bytes memory userData
     ) private pure returns (uint256, uint256[] memory) {
         uint256 bptAmountIn = userData.exactBptInForTokensOut();
-        uint256[] memory amountsOut = BasePoolMath.computeProportionalAmountsOut(balances, actualSupply, bptAmountIn);
+        uint256[] memory amountsOut = _computeProportionalAmountsOut(balances, actualSupply, bptAmountIn);
 
         return (bptAmountIn, amountsOut);
     }
@@ -947,11 +943,14 @@ contract ComposableStablePool is
         return (bptAmountIn, amountsOut);
     }
 
+    /**
+     * @dev We cannot use the default RecoveryMode implementation here, since we need to account for the BPT token.
+     */
     function _doRecoveryModeExit(
         uint256[] memory registeredBalances,
         uint256,
         bytes memory userData
-    ) internal view override returns (uint256, uint256[] memory) {
+    ) internal virtual override returns (uint256, uint256[] memory) {
         // Since this Pool uses preminted BPT, we need to replace the total supply with the virtual total supply, and
         // adjust the balances array by removing BPT from it.
         // Note that we don't compute the actual supply, which would require a lot of complex calculations and
@@ -959,13 +958,11 @@ contract ComposableStablePool is
         // recovery mode is enabled (since all protocol fees are forfeit and the fee percentages zeroed out).
         (uint256 virtualSupply, uint256[] memory balances) = _dropBptItemFromBalances(registeredBalances);
 
-        uint256 bptAmountIn = userData.recoveryModeExit();
-        uint256[] memory amountsOut = new uint256[](balances.length);
-
-        uint256 bptRatio = bptAmountIn.divDown(virtualSupply);
-        for (uint256 i = 0; i < balances.length; i++) {
-            amountsOut[i] = balances[i].mulDown(bptRatio);
-        }
+        (uint256 bptAmountIn, uint256[] memory amountsOut) = super._doRecoveryModeExit(
+            balances,
+            virtualSupply,
+            userData
+        );
 
         // The vault requires an array including BPT, so add it back in here.
         return (bptAmountIn, _addBptItem(amountsOut, 0));
@@ -1018,7 +1015,7 @@ contract ComposableStablePool is
             currentInvariantWithLastJoinExitAmp
         ) = _getProtocolPoolOwnershipPercentage(balances, lastJoinExitAmp, lastPostJoinExitInvariant);
 
-        protocolFeeAmount = ExternalFees.bptForPoolOwnershipPercentage(
+        protocolFeeAmount = ProtocolFees.bptForPoolOwnershipPercentage(
             virtualSupply,
             expectedProtocolOwnershipPercentage
         );
@@ -1034,9 +1031,19 @@ contract ComposableStablePool is
      * the token rates increase). Therefore, the rate is a monotonically increasing function.
      *
      * WARNING: since this function reads balances directly from the Vault, it is potentially subject to manipulation
-     * via reentrancy. However, this can only happen if one of the tokens in the Pool contains some form of callback
-     * behavior in the `transferFrom` function (like ERC777 tokens do). These tokens are strictly incompatible with the
+     * via reentrancy if called within a Vault context (i.e. in the middle of a join or an exit). It is up to the
+     * caller to ensure that the function is safe to call.
+     *
+     * This may happen e.g. if one of the tokens in the Pool contains some form of callback behavior in the
+     * `transferFrom` function (like ERC777 tokens do). These tokens are strictly incompatible with the
      * Vault and Pool design, and are not safe to be used.
+     *
+     * There are also other situations where calling this function is unsafe. See
+     * https://forum.balancer.fi/t/reentrancy-vulnerability-scope-expanded/4345 for reference.
+     *
+     * To call this function safely, attempt to trigger the reentrancy guard in the Vault by calling a non-reentrant
+     * function before calling `getRate`. That will make the transaction revert in an unsafe context.
+     * (See `whenNotInVaultContext` in `ComposableStablePoolRates`).
      */
     function getRate() external view virtual override returns (uint256) {
         // We need to compute the current invariant and actual total supply. The latter includes protocol fees that have
@@ -1083,13 +1090,35 @@ contract ComposableStablePool is
      *    effectively be included in any Pool operation that involves BPT.
      *
      * In the vast majority of cases, this function should be used instead of `totalSupply()`.
+     *
+     * **IMPORTANT NOTE**: calling this function within a Vault context (i.e. in the middle of a join or an exit) is
+     * potentially unsafe, since the returned value is manipulable. It is up to the caller to ensure safety.
+     *
+     * This is because this function calculates the invariant, which requires the state of the pool to be in sync
+     * with the state of the Vault. That condition may not be true in the middle of a join or an exit.
+     *
+     * To call this function safely, attempt to trigger the reentrancy guard in the Vault by calling a non-reentrant
+     * function before calling `getActualSupply`. That will make the transaction revert in an unsafe context.
+     * (See `whenNotInVaultContext` in `ComposableStablePoolRates`).
+     *
+     * See https://forum.balancer.fi/t/reentrancy-vulnerability-scope-expanded/4345 for reference.
      */
     function getActualSupply() external view returns (uint256) {
         (, uint256 virtualSupply, uint256 protocolFeeAmount, , ) = _getSupplyAndFeesData();
         return virtualSupply.add(protocolFeeAmount);
     }
 
-    function _beforeProtocolFeeCacheUpdate() internal override {
+    /**
+     * @dev This function will revert when called within a Vault context (i.e. in the middle of a join or an exit).
+     *
+     * This function depends on the invariant value, which may be calculated incorrectly in the middle of a join or
+     * an exit, because the state of the pool could be out of sync with the state of the Vault. The modifier
+     * `whenNotInVaultContext` prevents calling this function (and in turn, the external
+     * `updateProtocolFeePercentageCache`) in such a context.
+     *
+     * See https://forum.balancer.fi/t/reentrancy-vulnerability-scope-expanded/4345 for reference.
+     */
+    function _beforeProtocolFeeCacheUpdate() internal override whenNotInVaultContext {
         // The `getRate()` function depends on the actual supply, which in turn depends on the cached protocol fee
         // percentages. Changing these would therefore result in the rate changing, which is not acceptable as this is a
         // sensitive value.
@@ -1111,7 +1140,9 @@ contract ComposableStablePool is
             uint256 currentInvariantWithLastJoinExitAmp
         ) = _getSupplyAndFeesData();
 
-        _payProtocolFees(protocolFeeAmount);
+        if (protocolFeeAmount > 0) {
+            _payProtocolFees(protocolFeeAmount);
+        }
 
         // With the fees paid, we now need to calculate the current invariant so we can store it alongside the current
         // amplification factor, marking the Pool as free of protocol debt.
@@ -1129,7 +1160,18 @@ contract ComposableStablePool is
         _updatePostJoinExit(currentAmp, currentInvariant);
     }
 
-    function _onDisableRecoveryMode() internal override {
+    /**
+     * @dev This function will revert when called within a Vault context (i.e. in the middle of a join or an exit).
+     *
+     * This function depends on the invariant value, which may be calculated incorrectly in the middle of a join or
+     * an exit, because the state of the pool could be out of sync with the state of the Vault.
+     *
+     * The modifier `whenNotInVaultContext` prevents calling this function (and in turn, the external
+     * `disableRecoveryMode`) in such a context.
+     *
+     * See https://forum.balancer.fi/t/reentrancy-vulnerability-scope-expanded/4345 for reference.
+     */
+    function _onDisableRecoveryMode() internal override whenNotInVaultContext {
         // Enabling recovery mode short-circuits protocol fee computations, forcefully returning a zero percentage,
         // increasing the return value of `getRate()` and effectively forfeiting due protocol fees.
 
